@@ -171,7 +171,24 @@ define('DB_PASSWORD', '{$db_password}');
                   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                   FOREIGN KEY (`platform_id`) REFERENCES `platforms`(`id`) ON DELETE CASCADE ON UPDATE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci COMMENT='Asuntos de correo por plataforma';"
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci COMMENT='Asuntos de correo por plataforma';",
+
+                // *** NUEVA TABLA: Rate Limiting ***
+                "CREATE TABLE IF NOT EXISTS `rate_limiting` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `ip_address` VARCHAR(45) NOT NULL COMMENT 'Dirección IP del usuario (IPv4 o IPv6)',
+                `user_id` INT NULL COMMENT 'ID del usuario si está logueado',
+                `action_type` VARCHAR(50) NOT NULL COMMENT 'Tipo de acción (search_email, login_attempt, etc.)',
+                `timestamp` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Momento exacto de la acción',
+                `blocked_until` TIMESTAMP NULL COMMENT 'Hasta cuándo está bloqueado (NULL = no bloqueado)',
+                `attempts_count` INT DEFAULT 1 COMMENT 'Número de intentos en la ventana de tiempo',
+    
+                INDEX `idx_ip_action_time` (`ip_address`, `action_type`, `timestamp`),
+                INDEX `idx_user_action_time` (`user_id`, `action_type`, `timestamp`),
+                INDEX `idx_blocked_until` (`blocked_until`),
+    
+                FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci COMMENT='Tabla para control de velocidad de consultas (Rate Limiting)';"
             ];
             
             // Ejecutar cada sentencia SQL para crear tablas
@@ -198,6 +215,11 @@ define('DB_PASSWORD', '{$db_password}');
                 ['LOGO','logo.png', 'Nombre del archivo de logo'],
                 ['INSTALLED', '0', 'Indica si el sistema ha sido instalado completamente'],
                 ['EMAIL_QUERY_TIME_LIMIT_MINUTES', '100', 'Tiempo máximo (en minutos) para buscar correos. Correos más antiguos que este límite no serán procesados.']
+                ['RATE_LIMIT_ENABLED', '1', 'Activar o desactivar el sistema de Rate Limiting (1=activado, 0=desactivado)'],
+                ['RATE_LIMIT_MAX_REQUESTS', '10', 'Número máximo de consultas permitidas por ventana de tiempo'],
+                ['RATE_LIMIT_TIME_WINDOW', '60', 'Ventana de tiempo en segundos (60 = 1 minuto)'],
+                ['RATE_LIMIT_BLOCK_DURATION', '300', 'Tiempo de bloqueo en segundos cuando se excede el límite (300 = 5 minutos)'],
+                ['RATE_LIMIT_ADMIN_MULTIPLIER', '5', 'Multiplicador para administradores (5 = 5 veces más consultas permitidas)'],
             ];
             $stmt_settings = $pdo->prepare("INSERT IGNORE INTO settings (name, value, description) VALUES (?, ?, ?)");
             foreach ($settingsData as $setting) {

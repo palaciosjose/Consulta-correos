@@ -8,6 +8,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once 'config/config.php';
 // Incluye el archivo encargado de decodificar correos
 require_once 'decodificador.php'; // Updated reference
+require_once 'security/rate_limiting.php';
 require_once 'instalacion/basededatos.php';
 
 // Función para escapar caracteres especiales y prevenir ataques XSS
@@ -193,17 +194,80 @@ if (isset($_POST['email']) && isset($_POST['plataforma'])) {
         die("Error de conexión a la base de datos: " . $conn->connect_error);
     }
 
+    // **NUEVO: Verificar Rate Limiting ANTES de procesar**
+    $rate_check = check_rate_limit($conn, 'search_email');
+    if (!$rate_check['allowed']) {
+        $_SESSION['error_message'] = '<div class="alert alert-warning text-center" role="alert">
+            <i class="fas fa-clock"></i> ' . htmlspecialchars($rate_check['message']) . '<br>
+            <small>Por favor, espera un momento antes de intentar nuevamente.</small>
+        </div>';
+        
+        // Registrar el intento bloqueado en logs normales
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $user_id = isset($_POST['user_id']) ? (int)$_POST['user_id'] : null;
+        $email = filter_var($_POST['email'], FILTER_SANITIZE_EMAIL);
+        $plataforma = $_POST['plataforma'];
+        
+        $stmt_log = $conn->prepare("INSERT INTO logs (user_id, email_consultado, plataforma, ip, resultado) VALUES (?, ?, ?, ?, ?)");
+        $resultado_bloqueado = "Rate Limit: " . $rate_check['message'];
+        $stmt_log->bind_param("issss", $user_id, $email, $plataforma, $ip, $resultado_bloqueado);
+        $stmt_log->execute();
+        $stmt_log->close();
+        
+        $conn->close();
+        header('Location: inicio.php');
+        exit();
+    }
+
     // Cargar settings al inicio
     $settings = get_all_settings($conn);
 
     $email = filter_var($_POST['email'], FILTER_SANITIZE_EMAIL);
     $plataforma = $_POST['plataforma'];
-    $user_id = isset($_POST['user_id']) ? (int)$_POST['user_id'] : null; // Capturar user_id si está disponible
-    $ip = $_SERVER['REMOTE_ADDR']; // Capturar IP del usuario
+    $user_id = isset($_POST['user_id']) ? (int)$_POST['user_id'] : null;
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    
+    // **NUEVO: Registrar el intento en Rate Limiting**
+    record_rate_limit_attempt($conn, 'search_email');
     
     // Establecer variable para guardar el resultado
     $resultado_consulta = '';
-    $found = false; // Inicializar $found aquí
+    $found = false;
+    
+    // Función para registrar la consulta en el log (MANTENER código existente)
+    function registrarLog($conn, $user_id, $email, $plataforma, $ip, $resultado) {
+        $stmt = $conn->prepare("INSERT INTO logs (user_id, email_consultado, plataforma, ip, resultado) VALUES (?, ?, ?, ?, ?)");
+        $stmt->bind_param("issss", $user_id, $email, $plataforma, $ip, $resultado);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    $resultado_validacion_formato = validate_email($email);
+
+    // 1. Validar formato del correo
+    if ($resultado_validacion_formato !== '') {
+        $_SESSION['error_message'] = '<div class="alert alert-danger text-center" role="alert">' . htmlspecialchars($resultado_validacion_formato) . '</div>';
+        $log_result_status = "Error Formato";
+        $log_detail = $resultado_validacion_formato;
+        registrarLog($conn, $user_id, $email, $plataforma, $ip, $log_result_status . ": " . substr(strip_tags($log_detail), 0, 200));
+        header('Location: inicio.php');
+        exit();
+    }
+    
+    // 2. Verificar autorización si el formato es válido
+    if (!is_authorized_email($email, $conn)) {
+        $_SESSION['error_message'] = '<div class="alert alert-danger text-center" role="alert">No tiene permisos para consultar este correo electrónico.</div>';
+        $log_result_status = "Acceso Denegado";
+        $log_detail = "Correo no autorizado: " . $email;
+        registrarLog($conn, $user_id, $email, $plataforma, $ip, $log_result_status . ": " . substr(strip_tags($log_detail), 0, 200));
+        header('Location: inicio.php');
+        exit();
+    }
+
+    // 3. Si el formato es válido y está autorizado, proceder con la búsqueda
+    // (EL RESTO DEL CÓDIGO DE BÚSQUEDA PERMANECE IGUAL - no modificar)
+    $query = "SELECT * FROM email_servers WHERE enabled = 1 ORDER BY id ASC";
+    $servers = $conn->query($query);
     
     // Código para registrar la consulta en el log
     function registrarLog($conn, $user_id, $email, $plataforma, $ip, $resultado) {
@@ -428,7 +492,89 @@ function is_installed() {
     return $installed;
 }
 
+/**
+ * Función para mostrar estadísticas de Rate Limiting en el admin
+ */
+function get_rate_limiting_admin_stats($conn) {
+    try {
+        $stats = get_rate_limiting_stats($conn);
+        return $stats;
+    } catch (Exception $e) {
+        error_log("Error obteniendo estadísticas de Rate Limiting: " . $e->getMessage());
+        return [
+            'today_total' => 0,
+            'blocked_ips' => 0,
+            'top_ips' => []
+        ];
+    }
+}
 
+/**
+ * Función para verificar si un usuario específico está bloqueado
+ */
+function is_user_rate_limited($conn, $ip = null) {
+    if (!$ip) {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    }
+    
+    $rate_check = check_rate_limit($conn, 'search_email');
+    return !$rate_check['allowed'];
+}
 
+/**
+ * Función para desbloquear manualmente una IP (para admins)
+ */
+function admin_unblock_ip($conn, $ip_address) {
+    try {
+        $stmt = $conn->prepare("
+            UPDATE rate_limiting 
+            SET blocked_until = NOW() 
+            WHERE ip_address = ? AND blocked_until > NOW()
+        ");
+        $stmt->bind_param("s", $ip_address);
+        $result = $stmt->execute();
+        $affected = $stmt->affected_rows;
+        $stmt->close();
+        
+        return $affected > 0;
+    } catch (Exception $e) {
+        error_log("Error desbloqueando IP: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Función para obtener IPs bloqueadas actualmente
+ */
+function get_blocked_ips($conn) {
+    try {
+        $stmt = $conn->prepare("
+            SELECT DISTINCT ip_address, blocked_until, action_type
+            FROM rate_limiting 
+            WHERE blocked_until > NOW() 
+            ORDER BY blocked_until DESC
+        ");
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        $blocked_ips = [];
+        while ($row = $result->fetch_assoc()) {
+            $blocked_ips[] = $row;
+        }
+        $stmt->close();
+        
+        return $blocked_ips;
+    } catch (Exception $e) {
+        error_log("Error obteniendo IPs bloqueadas: " . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Función de mantenimiento automático (llamar periódicamente)
+ */
+function rate_limiting_maintenance($conn) {
+    return cleanup_rate_limiting($conn);
+}
 
 ?>
