@@ -7,8 +7,10 @@ if (session_status() === PHP_SESSION_NONE) {
 // Incluye el archivo de configuración para acceder a las constantes y funciones necesarias
 require_once 'config/config.php';
 // Incluye el archivo encargado de decodificar correos
-require_once 'decodificador.php'; // Updated reference
+require_once 'decodificador.php';
 require_once 'instalacion/basededatos.php';
+// Incluir sistema de cache
+require_once 'cache/cache_helper.php';
 
 // Función para escapar caracteres especiales y prevenir ataques XSS
 function escape_string($string) {
@@ -68,96 +70,132 @@ function is_authorized_email($email, $conn) {
     return $count > 0;
 }
 
-// Función para buscar correos en la bandeja de entrada según el destinatario y asunto
-function search_email($inbox, $email, $asunto) {
-    global $settings; // Acceder a las configuraciones globales
+// Función optimizada para buscar correos con múltiples asuntos en una sola consulta
+function search_emails_optimized($inbox, $email, $asuntos_array, $time_limit_minutes = 100) {
+    if (empty($asuntos_array)) {
+        return false;
+    }
     
-    // Obtener el límite de tiempo configurado (en minutos)
-    $time_limit_minutes = isset($settings['EMAIL_QUERY_TIME_LIMIT_MINUTES']) ? 
-                          (int)$settings['EMAIL_QUERY_TIME_LIMIT_MINUTES'] : 300; // Valor por defecto: 300 minutos (5 horas)
-    
-    // Convertir minutos a segundos
+    // Calcular fecha límite más eficientemente
     $time_limit_seconds = $time_limit_minutes * 60;
+    $search_date = date("d-M-Y", time() - $time_limit_seconds);
     
-    // Calcular la fecha límite para la búsqueda IMAP
-    $searchDate = date("d-M-Y", time() - $time_limit_seconds);
+    // Construir búsqueda IMAP combinada para todos los asuntos
+    $search_criteria = 'TO "' . $email . '" SINCE "' . $search_date . '" (';
     
-    // Realizar la búsqueda IMAP
-    $emails = imap_search($inbox, 'TO "' . $email . '" SUBJECT "' . $asunto . '" SINCE "'.$searchDate.'"');
+    // Añadir todos los asuntos con OR
+    $subject_criteria = [];
+    foreach ($asuntos_array as $asunto) {
+        if (!empty(trim($asunto))) {
+            $subject_criteria[] = 'SUBJECT "' . trim($asunto) . '"';
+        }
+    }
     
-    if ($emails !== false && !empty($emails)) {
-        $filteredEmails = [];
-        foreach ($emails as $msgNum) {
-            $headerInfo = imap_headerinfo($inbox, $msgNum);
-            // Aplicar el mismo límite de tiempo para el filtrado post-búsqueda
-            if (time() - strtotime($headerInfo->date) <= $time_limit_seconds) {
-                $filteredEmails[] = $msgNum;
+    if (empty($subject_criteria)) {
+        return false;
+    }
+    
+    // Combinar con OR para buscar cualquier asunto
+    $search_criteria .= implode(' OR ', $subject_criteria) . ')';
+    
+    // Ejecutar búsqueda única y optimizada
+    $emails = imap_search($inbox, $search_criteria);
+    
+    if ($emails === false || empty($emails)) {
+        return false;
+    }
+    
+    // Filtrado optimizado - solo verificar los más recientes
+    $filtered_emails = [];
+    $current_time = time();
+    
+    // Procesar emails en orden inverso (más recientes primero)
+    $emails = array_reverse($emails);
+    
+    foreach ($emails as $msg_num) {
+        // Obtener solo fecha del header (más rápido que headerinfo completo)
+        $header = imap_fetchheader($inbox, $msg_num);
+        
+        // Extraer fecha del header más eficientemente
+        if (preg_match('/^Date:\s*(.+)$/mi', $header, $matches)) {
+            $email_time = strtotime($matches[1]);
+            
+            if ($email_time && ($current_time - $email_time) <= $time_limit_seconds) {
+                $filtered_emails[] = $msg_num;
+                
+                // OPTIMIZACIÓN: Si encontramos uno reciente, no necesitamos más
+                break;
             }
         }
-        return $filteredEmails;
     }
-    return $emails; 
+    
+    return !empty($filtered_emails) ? $filtered_emails : false;
 }
 
-// Función para abrir la conexión al servidor de correo
-function open_imap_connection($server_config) {
-    global $inbox; // Accede a la variable $inbox
-    
-    // Verificar que los datos del servidor no están vacíos
+// Función optimizada para abrir conexión IMAP con timeouts configurables
+function open_imap_connection_optimized($server_config, $settings = null) {
+    // Verificar configuración
     if (empty($server_config['imap_server']) || empty($server_config['imap_port']) || 
         empty($server_config['imap_user']) || empty($server_config['imap_password'])) {
-        
-        // Registrar error internamente pero no mostrarlo directamente al usuario
         error_log("Configuración IMAP incompleta para servidor ID: " . ($server_config['id'] ?? 'Desconocido'));
-        // Ya no establecemos $_SESSION['error_message'] aquí
-        // $_SESSION['error_message'] = '...'; 
-        return false; // Indica fallo, pero sin mensaje de sesión específico para este caso
+        return false;
     }
     
-    // Deshabilitar notificaciones de error para usar manejo propio
-    $old_error_reporting = error_reporting();
-    error_reporting(0);
-    
-    // Construir la cadena de conexión
-    $mailbox = '{' . $server_config['imap_server'] . ':' . $server_config['imap_port'] . '/imap/ssl}INBOX';
-    
-    // Intentar abrir la conexión IMAP con opciones para evitar certificados inválidos
-    $inbox = imap_open(
-        $mailbox,
-        $server_config['imap_user'],
-        $server_config['imap_password'],
-        OP_READONLY,
-        1,
-        array(
-            'DISABLE_AUTHENTICATOR' => 'GSSAPI'
-        )
-    );
-    
-    // Restaurar nivel de reporte de errores
-    error_reporting($old_error_reporting);
-
-    if ($inbox === false) {
-        // Obtener los errores IMAP para diagnóstico
-        $errors = imap_errors();
-        $last_error = end($errors);
-        
-        // Registrar el error para depuración
-        error_log("Error IMAP al conectar con " . $server_config['imap_server'] . ": " . print_r($errors, true));
-        
-        // Establecer mensaje de error ROJO para errores de conexión REALES
-        $_SESSION['error_message'] = '
-            <div class="alert alert-danger text-center" role="alert">
-                Error al conectar con el servidor IMAP<br>
-                Dominio: ' . htmlspecialchars($server_config['imap_server']) . '<br>
-                Detalles: ' . ($last_error ? htmlspecialchars($last_error) : 'Error desconocido') . '
-            </div>
-        ';
-        // header('Location: inicio.php'); // Ya comentado/eliminado
-        // exit(); // Ya comentado/eliminado
-        return false; // Indica fallo real de conexión
+    // Obtener timeout desde configuración o usar valor por defecto
+    $connection_timeout = 10; // valor por defecto
+    if ($settings && isset($settings['IMAP_CONNECTION_TIMEOUT'])) {
+        $connection_timeout = (int)$settings['IMAP_CONNECTION_TIMEOUT'];
+        // Validar rango razonable
+        if ($connection_timeout < 5 || $connection_timeout > 60) {
+            $connection_timeout = 10;
+        }
     }
     
-    return true;
+    // Configurar timeouts optimizados para conexiones más rápidas
+    $old_default_socket_timeout = ini_get('default_socket_timeout');
+    ini_set('default_socket_timeout', $connection_timeout);
+    
+    // Deshabilitar reportes de error para manejo propio
+    $old_error_reporting = error_reporting(0);
+    
+    try {
+        // Construir cadena de conexión optimizada
+        $mailbox = '{' . $server_config['imap_server'] . ':' . $server_config['imap_port'] . '/imap/ssl/novalidate-cert}INBOX';
+        
+        // Intentar conexión con opciones optimizadas
+        $inbox = imap_open(
+            $mailbox,
+            $server_config['imap_user'],
+            $server_config['imap_password'],
+            OP_READONLY | CL_EXPUNGE, // Flags optimizados
+            1, // Máximo 1 reintento
+            array(
+                'DISABLE_AUTHENTICATOR' => 'GSSAPI',
+                'timeout' => $connection_timeout // Timeout configurable
+            )
+        );
+        
+        // Restaurar configuraciones
+        error_reporting($old_error_reporting);
+        ini_set('default_socket_timeout', $old_default_socket_timeout);
+        
+        if ($inbox === false) {
+            $errors = imap_errors();
+            $last_error = $errors ? end($errors) : 'Error de conexión desconocido';
+            error_log("Error IMAP optimizado - " . $server_config['imap_server'] . ": " . $last_error);
+            return false;
+        }
+        
+        return $inbox;
+        
+    } catch (Exception $e) {
+        // Restaurar configuraciones en caso de excepción
+        error_reporting($old_error_reporting);
+        ini_set('default_socket_timeout', $old_default_socket_timeout);
+        
+        error_log("Excepción en conexión IMAP optimizada: " . $e->getMessage());
+        return false;
+    }
 }
 
 // Función para cerrar la conexión al servidor de correo
@@ -193,8 +231,11 @@ if (isset($_POST['email']) && isset($_POST['plataforma'])) {
         die("Error de conexión a la base de datos: " . $conn->connect_error);
     }
 
-    // Cargar settings al inicio
-    $settings = get_all_settings($conn);
+    // Cargar settings desde cache (OPTIMIZADO)
+    $settings = SimpleCache::get_settings($conn);
+    
+    // Cargar plataformas y asuntos desde cache (OPTIMIZADO)
+    $platforms_cache = SimpleCache::get_platform_subjects($conn);
 
     $email = filter_var($_POST['email'], FILTER_SANITIZE_EMAIL);
     $plataforma = $_POST['plataforma'];
@@ -246,132 +287,132 @@ if (isset($_POST['email']) && isset($_POST['plataforma'])) {
     $real_connection_error_occurred = false; 
 
     if ($servers && $servers->num_rows > 0) {
+        // OPTIMIZADO: Obtener asuntos UNA SOLA VEZ antes del bucle
+        $platform_name_from_user = $plataforma;
+        $asuntos = [];
+        
+        if (isset($platforms_cache[$platform_name_from_user])) {
+            $asuntos = $platforms_cache[$platform_name_from_user];
+        } else {
+            error_log("La plataforma '" . htmlspecialchars($platform_name_from_user) . "' no se encontró en cache.");
+        }
+        
+        // Si no hay asuntos, no tiene sentido buscar
+        if (empty($asuntos)) {
+            $_SESSION['resultado'] = '<div class="alert alert-warning text-center" role="alert">
+                No se encontraron asuntos configurados para la plataforma seleccionada.
+            </div>';
+            registrarLog($conn, $user_id, $email, $plataforma, $ip, "Sin Asuntos: Plataforma sin configurar");
+            header('Location: inicio.php');
+            exit();
+        }
+        
+        // Obtener configuraciones de performance
+        $time_limit_minutes = (int)($settings['EMAIL_QUERY_TIME_LIMIT_MINUTES'] ?? 100);
+        $early_stop_enabled = ($settings['EARLY_SEARCH_STOP'] ?? '1') === '1';
+        $optimization_enabled = ($settings['IMAP_SEARCH_OPTIMIZATION'] ?? '1') === '1';
+        
+        // Log de performance del inicio
+        $search_start_time = microtime(true);
+        log_performance("Iniciando búsqueda optimizada para: $email en $platform_name_from_user", null, $settings);
+        
         while ($srv = $servers->fetch_assoc()) {
             unset($_SESSION['error_message']); 
-            $conn_status = open_imap_connection($srv);
+            
+            // OPTIMIZADO: Usar nueva función de conexión con configuraciones
+            $inbox = open_imap_connection_optimized($srv, $settings);
 
-            if ($conn_status === true) {
+            if ($inbox !== false) {
                 $config_error_only = false; // Hubo al menos una conexión exitosa
-                global $inbox; 
-                // Establecer asunto según la plataforma
-                $platform_name_from_user = $plataforma; // Nombre viene del POST
-                $asuntos = []; // Array para almacenar los asuntos a buscar
                 
-                // Obtener el ID de la plataforma desde la tabla platforms
-                $stmt_platform = $conn->prepare("SELECT id FROM platforms WHERE name = ? LIMIT 1");
-                if (!$stmt_platform) {
-                    error_log("Error al preparar consulta para buscar platform ID: " . $conn->error);
-                    // Considerar cómo manejar este error, ¿continuar sin asuntos, mostrar error?
+                // OPTIMIZADO: Buscar según configuración
+                if ($optimization_enabled) {
+                    // Usar búsqueda optimizada (TODOS los asuntos en UNA consulta)
+                    $emails_found = search_emails_optimized($inbox, $email, $asuntos, $time_limit_minutes);
                 } else {
-                    $stmt_platform->bind_param("s", $platform_name_from_user);
-                    $stmt_platform->execute();
-                    $stmt_platform->bind_result($platform_id);
-                    $platform_found = $stmt_platform->fetch();
-                    $stmt_platform->close();
-
-                    if ($platform_found && $platform_id) {
-                        // Si se encontró la plataforma, obtener sus asuntos
-                        $stmt_subjects = $conn->prepare("SELECT subject FROM platform_subjects WHERE platform_id = ?");
-                        if (!$stmt_subjects) {
-                             error_log("Error al preparar consulta para buscar subjects: " . $conn->error);
-                             // Considerar manejo de error
-                        } else {
-                            $stmt_subjects->bind_param("i", $platform_id);
-                            $stmt_subjects->execute();
-                            $result_subjects = $stmt_subjects->get_result();
-                            while ($subject_row = $result_subjects->fetch_assoc()) {
-                                $asuntos[] = $subject_row['subject']; // Añadir asunto al array
-                            }
-                            $stmt_subjects->close();
+                    // Usar búsqueda tradicional (compatibilidad)
+                    $emails_found = false;
+                    foreach ($asuntos as $asunto) {
+                        if (empty(trim($asunto))) continue;
+                        $emails_found = search_email($inbox, $email, $asunto);
+                        if ($emails_found && !empty($emails_found)) {
+                            break; // Parar en el primer asunto encontrado
                         }
-                    } else {
-                        // La plataforma seleccionada por el usuario no existe en la BD
-                         error_log("La plataforma '" . htmlspecialchars($platform_name_from_user) . "' seleccionada no se encontró en la tabla platforms.");
-                         // Decidir si mostrar un error o simplemente no buscar nada
                     }
                 }
                 
-                // Si no se encontraron asuntos (plataforma no existe o no tiene asuntos), el bucle no se ejecutará
-                if (empty($asuntos)) {
-                    error_log("No se encontraron asuntos para la plataforma '" . htmlspecialchars($platform_name_from_user) . "' en el servidor " . $srv['server_name']);
-                    // Continuar al siguiente servidor o manejar como "No encontrado"
-                }
-                
-                // Buscar en todos los asuntos encontrados para esta plataforma
-                foreach ($asuntos as $asunto) {
-                    if (empty(trim($asunto))) continue; // Saltar asuntos vacíos o solo espacios
-                    
-                    $emails_found = search_email($inbox, $email, $asunto);
-                    if ($emails_found && !empty($emails_found)) {
-                        // Encontró el correo con este asunto
-                        // Obtener el ID más reciente (asumiendo que search_email devuelve IDs ordenados o el más relevante primero)
-                        $latest_email_id = max($emails_found); 
-                        $email_data = imap_fetch_overview($inbox, $latest_email_id, 0);
+                if ($emails_found && !empty($emails_found)) {
+                    // Obtener el email más reciente
+                    $latest_email_id = max($emails_found); 
+                    $email_data = imap_fetch_overview($inbox, $latest_email_id, 0);
 
-                        if (!empty($email_data)) {
-                            $header = $email_data[0];
-                            $body = get_email_body($inbox, $latest_email_id, $header);
+                    if (!empty($email_data)) {
+                        $header = $email_data[0];
+                        $body = get_email_body($inbox, $latest_email_id, $header);
+                        
+                        if (!empty($body)) {
+                            $processed_body = process_email_body($body);
+                            $resultado = $processed_body;
+                            $found = true;
                             
-                            if (!empty($body)) {
-                                $processed_body = process_email_body($body);
-                                $resultado = $processed_body;
-                                $found = true;
-                                break 2; // Salir de ambos bucles (asuntos y servidores)
+                            // Log de éxito
+                            log_performance("Búsqueda exitosa en servidor: " . $srv['server_name'], $search_start_time, $settings);
+                            
+                            // Cerrar conexión y salir inmediatamente
+                            imap_close($inbox);
+                            
+                            // Verificar si debe parar temprano
+                            if ($early_stop_enabled) {
+                                break; // Salir del bucle de servidores
                             }
                         }
                     }
                 }
                 
-                // Cerrar la conexión IMAP después de buscar en este servidor
-                close_imap_connection();
+                // Cerrar conexión después de buscar en este servidor
+                imap_close($inbox);
                 
-            } else { // $conn_status es false
-                // Verificar si open_imap_connection estableció un mensaje de error
-                if (isset($_SESSION['error_message']) && !empty($_SESSION['error_message'])){
-                     // Es un error de conexión REAL (credenciales, red, etc.)
-                     $config_error_only = false;
-                     $real_connection_error_occurred = true;
-                     // Extraer mensaje para log interno
-                     preg_match('/Detalles: (.*?)<\/div>/s', $_SESSION['error_message'], $matches);
-                     $last_error_msg = $matches[1] ?? 'Error de conexión reportado en sesión.';
-                     $error_messages[] = "Error conectando a " . $srv['server_name'] . ": " . htmlspecialchars_decode($last_error_msg);
-                } else {
-                    // Es un error de configuración incompleta (open_imap_connection devolvió false sin mensaje de sesión)
-                    $error_messages[] = "Configuración incompleta para " . $srv['server_name'] . ".";
-                    // Mantenemos $config_error_only = true si no ha habido otros errores
-                }
-                // Continuar al siguiente servidor aunque este falle
+            } else { // $inbox es false
+                // Error de conexión - mantener lógica de manejo de errores existente
+                $config_error_only = false;
+                $real_connection_error_occurred = true;
+                $error_messages[] = "Error conectando a " . $srv['server_name'] . ": Error de conexión optimizada";
+                // Continuar al siguiente servidor
             }
-        } // Fin while $srv
+        } // Fin while servidores
         
-        // Limpiar el último mensaje de error de la sesión si no hubo error real de conexión, 
-        // O si se encontró el correo
+        // Log final de performance
+        log_performance("Búsqueda completa finalizada", $search_start_time, $settings);
+        
+        // Limpiar mensaje de error si se encontró resultado o no hubo errores reales
         if ($found || !$real_connection_error_occurred) {
             unset($_SESSION['error_message']);
         }
 
-        // Establecer el mensaje final basado en los resultados
+        // Establecer mensaje final basado en resultados
         if (!$found) {
             if ($real_connection_error_occurred) {
-                // El último mensaje de error de conexión ya está en $_SESSION['error_message']
+                $_SESSION['error_message'] = '<div class="alert alert-danger text-center" role="alert">
+                    Error de conexión con los servidores de correo. Inténtalo de nuevo en unos momentos.
+                </div>';
                 $error_log = implode("; ", $error_messages);
-                error_log("Errores de búsqueda IMAP (incluyendo conexión): " . $error_log);
-                unset($_SESSION['resultado']); // Asegurar que no haya resultado
+                error_log("Errores de búsqueda IMAP optimizada: " . $error_log);
+                unset($_SESSION['resultado']);
             } else if (!empty($error_messages)) { 
                 $_SESSION['resultado'] = '<div class="alert alert-info text-center" role="alert">
-                                    0 mensajes encontrados (problema de configuración del servidor).</div>'; // Mensaje más específico
-                error_log("Búsqueda finalizada sin encontrar correo. Hubo errores de configuración incompleta: " . implode("; ", $error_messages));
-                // Asegurarse que no quede un mensaje de error de conexión previo si solo hubo de config
+                    0 mensajes encontrados (problema de configuración del servidor).
+                </div>';
+                error_log("Búsqueda optimizada finalizada sin encontrar correo. Errores de configuración: " . implode("; ", $error_messages));
                 unset($_SESSION['error_message']); 
             } else {
-                 $_SESSION['resultado'] = '<div class="alert alert-success alert-light text-center" style="background-color: #d1e7dd; color: #0f5132;" role="alert">
+                $_SESSION['resultado'] = '<div class="alert alert-success alert-light text-center" style="background-color: #d1e7dd; color: #0f5132;" role="alert">
                     0 mensajes encontrados.
                 </div>'; 
                 unset($_SESSION['error_message']);
             }
         } else {
-            // Correo encontrado ($found = true)
-            $_SESSION['resultado'] = $resultado; // $resultado ya tiene el cuerpo procesado
+            // Correo encontrado
+            $_SESSION['resultado'] = $resultado;
             unset($_SESSION['error_message']);
         }
     } else {
@@ -403,23 +444,23 @@ function is_installed() {
     // Si no existen las variables de conexión, el sistema no está instalado
     if (empty($db_host) || empty($db_user) || empty($db_name)) {
         return false;
-        }
+    }
         
-        // Intentar conectar a la base de datos
-            $conn = new mysqli($db_host, $db_user, $db_password, $db_name);
+    // Intentar conectar a la base de datos
+    $conn = new mysqli($db_host, $db_user, $db_password, $db_name);
     $conn->set_charset("utf8mb4"); // Establecer UTF-8 para la conexión
     
-            if ($conn->connect_error) {
-                return false;
-            }
+    if ($conn->connect_error) {
+        return false;
+    }
             
     // Verificar si la tabla settings existe y si el valor de INSTALLED es 1
     $result = $conn->query("SELECT value FROM settings WHERE name = 'INSTALLED'");
             
     if (!$result || $result->num_rows === 0) {
-            $conn->close();
-            return false;
-        }
+        $conn->close();
+        return false;
+    }
     
     $row = $result->fetch_assoc();
     $installed = $row['value'] === '1';
@@ -428,7 +469,41 @@ function is_installed() {
     return $installed;
 }
 
+// FUNCIONES DE COMPATIBILIDAD Y FALLBACK
 
+// Mantener función original como fallback
+function search_email($inbox, $email, $asunto) {
+    // Usar la nueva función optimizada con un solo asunto
+    return search_emails_optimized($inbox, $email, [$asunto]);
+}
 
+// Función de conexión original como fallback
+function open_imap_connection($server_config) {
+    global $inbox;
+    // Usar configuraciones globales si están disponibles
+    global $settings;
+    $inbox = open_imap_connection_optimized($server_config, $settings ?? null);
+    return $inbox !== false;
+}
+
+// Función para estadísticas de rendimiento (configurable)
+function log_performance($message, $start_time = null, $settings = null) {
+    // Verificar si está habilitado
+    $logging_enabled = false;
+    if ($settings && isset($settings['PERFORMANCE_LOGGING'])) {
+        $logging_enabled = $settings['PERFORMANCE_LOGGING'] === '1';
+    }
+    
+    if (!$logging_enabled) {
+        return; // No hacer nada si está deshabilitado
+    }
+    
+    if ($start_time) {
+        $execution_time = microtime(true) - $start_time;
+        error_log("PERFORMANCE: $message - Tiempo: " . round($execution_time, 3) . "s");
+    } else {
+        error_log("PERFORMANCE: $message");
+    }
+}
 
 ?>

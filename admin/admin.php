@@ -3,6 +3,7 @@ session_start();
 require_once '../instalacion/basededatos.php';
 require_once '../funciones.php';
 require_once '../security/auth.php';
+require_once '../cache/cache_helper.php';
 
 // Verificar que el usuario esté autenticado y sea administrador
 check_session(true, '../index.php');
@@ -299,7 +300,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
             'enlace_global_1', 'enlace_global_1_texto', 'enlace_global_2', 'enlace_global_2_texto',
             'enlace_global_numero_whatsapp', 'enlace_global_texto_whatsapp','ID_VENDEDOR','LOGO',
             'REQUIRE_LOGIN',
-            'EMAIL_QUERY_TIME_LIMIT_MINUTES'
+            'EMAIL_QUERY_TIME_LIMIT_MINUTES',
+            'IMAP_CONNECTION_TIMEOUT',
+            'IMAP_SEARCH_OPTIMIZATION', 
+            'PERFORMANCE_LOGGING',
+            'EARLY_SEARCH_STOP'
         ];
 
         foreach ($updatable_keys as $key) {
@@ -308,7 +313,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
                 $final_value = $_POST[$key];
                 if (in_array($key, [
                     'EMAIL_AUTH_ENABLED',
-                    'REQUIRE_LOGIN'
+                    'REQUIRE_LOGIN',
+                    // NUEVOS checkboxes de performance
+                    'IMAP_SEARCH_OPTIMIZATION',
+                    'PERFORMANCE_LOGGING',
+                    'EARLY_SEARCH_STOP'
                 ])) {
                     $final_value = ($final_value === '1') ? '1' : '0';
                 }
@@ -321,7 +330,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
                 // Si es checkbox y no se define, se marca como '0'
                 if (in_array($key, [
                     'EMAIL_AUTH_ENABLED',
-                    'REQUIRE_LOGIN'
+                    'REQUIRE_LOGIN',
+                    'IMAP_SEARCH_OPTIMIZATION',
+                    'PERFORMANCE_LOGGING', 
+                    'EARLY_SEARCH_STOP'
                 ])) {
                     $zero = '0';
                     // Usar INSERT ... ON DUPLICATE KEY UPDATE aquí también
@@ -375,8 +387,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
         } else {
             $_SESSION['message'] = 'Configuración actualizada con éxito.';
         }
+        
+        // Limpiar cache después de actualizar configuraciones
+        SimpleCache::clear_settings_cache();
     } else {
         $_SESSION['message'] = 'Servidores IMAP actualizados con éxito.';
+        
+        // Limpiar cache después de actualizar servidores
+        SimpleCache::clear_settings_cache();
     }
     
     header("Location: admin.php?tab=" . ($_POST['current_tab'] ?? 'configuracion'));
@@ -478,6 +496,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
             <input type="number" class="form-control" id="EMAIL_QUERY_TIME_LIMIT_MINUTES" name="EMAIL_QUERY_TIME_LIMIT_MINUTES" min="1" max="1440" value="<?= $settings['EMAIL_QUERY_TIME_LIMIT_MINUTES'] ?? '15' ?>">
             <small class="form-text text-muted d-block">Tiempo máximo (en minutos) para buscar correos. Correos más antiguos que este límite no serán procesados.</small>
         </div>
+
+<!-- NUEVAS CONFIGURACIONES DE PERFORMANCE -->
+        <h3 class="text-center mt-5 mb-4">⚡ Configuraciones de Performance</h3>
+        
+        <div class="mb-3 reduced-width">
+            <label for="IMAP_CONNECTION_TIMEOUT" class="form-label">Timeout de conexión IMAP (segundos)</label>
+            <input type="number" class="form-control" id="IMAP_CONNECTION_TIMEOUT" name="IMAP_CONNECTION_TIMEOUT" min="5" max="60" value="<?= $settings['IMAP_CONNECTION_TIMEOUT'] ?? '10' ?>">
+            <small class="form-text text-muted d-block">Tiempo máximo para conectar a servidores IMAP. Valores más bajos = conexiones más rápidas pero menos tolerancia a servidores lentos.</small>
+        </div>
+        
+        <div class="mb-3 form-group text-center">
+            <label for="IMAP_SEARCH_OPTIMIZATION" class="form-label">Optimizaciones de búsqueda IMAP</label>
+            <input type="checkbox" class="form-check-input" id="IMAP_SEARCH_OPTIMIZATION" name="IMAP_SEARCH_OPTIMIZATION" value="1" <?= ($settings['IMAP_SEARCH_OPTIMIZATION'] ?? '1') === '1' ? 'checked' : '' ?>>
+            <small class="form-text text-muted d-block">Buscar todos los asuntos en una sola consulta IMAP (más rápido). Deshabilitar solo si causa problemas.</small>
+        </div>
+        
+        <div class="mb-3 form-group text-center">
+            <label for="EARLY_SEARCH_STOP" class="form-label">Parada temprana de búsqueda</label>
+            <input type="checkbox" class="form-check-input" id="EARLY_SEARCH_STOP" name="EARLY_SEARCH_STOP" value="1" <?= ($settings['EARLY_SEARCH_STOP'] ?? '1') === '1' ? 'checked' : '' ?>>
+            <small class="form-text text-muted d-block">Parar la búsqueda inmediatamente al encontrar el primer resultado (más rápido).</small>
+        </div>
+        
+        <div class="mb-3 form-group text-center">
+            <label for="PERFORMANCE_LOGGING" class="form-label">Logs de rendimiento</label>
+            <input type="checkbox" class="form-check-input" id="PERFORMANCE_LOGGING" name="PERFORMANCE_LOGGING" value="1" <?= ($settings['PERFORMANCE_LOGGING'] ?? '0') === '1' ? 'checked' : '' ?>>
+            <small class="form-text text-muted d-block">Registrar tiempos de ejecución en los logs del servidor (para debugging).</small>
+        </div>        
+
                         <?php foreach (['PAGE_TITLE' => 'Titulo SEO de la Página', 'enlace_global_1' => 'Enlace del Botón 1', 'enlace_global_1_texto' => 'Texto del botón 1', 'enlace_global_2' => 'Enlace del Botón 2', 'enlace_global_2_texto' => 'Texto del botón 2', 'enlace_global_numero_whatsapp' => 'Número de WhatsApp', 'enlace_global_texto_whatsapp' => 'Texto Botón de WhatsApp','ID_VENDEDOR'=> 'Id Vendedor','LOGO' => 'Logo'] as $option => $label): ?>
                             <div class="mb-3 reduced-width">
                                 <label for="<?= $option ?>" class="form-label">

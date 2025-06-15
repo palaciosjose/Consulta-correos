@@ -179,7 +179,7 @@ define('DB_PASSWORD', '{$db_password}');
                 $pdo->exec($sql);
             }
             
-            // Insertar configuraciones predeterminadas en la tabla settings (YA LIMPIO, SIN PLATAFORMAS/ASUNTOS)
+            // Insertar configuraciones predeterminadas en la tabla settings
             $settingsData = [
                 ['PAGE_TITLE', 'Consulta tu Código', 'Título de la página principal'],
                 ['EMAIL_AUTH_ENABLED', '0', 'Habilitar filtro de correos electrónicos'],
@@ -197,7 +197,11 @@ define('DB_PASSWORD', '{$db_password}');
                 ['ID_VENDEDOR', '9', 'ID del vendedor para enlaces de afiliados'],
                 ['LOGO','logo.png', 'Nombre del archivo de logo'],
                 ['INSTALLED', '0', 'Indica si el sistema ha sido instalado completamente'],
-                ['EMAIL_QUERY_TIME_LIMIT_MINUTES', '100', 'Tiempo máximo (en minutos) para buscar correos. Correos más antiguos que este límite no serán procesados.']
+                ['EMAIL_QUERY_TIME_LIMIT_MINUTES', '100', 'Tiempo máximo (en minutos) para buscar correos. Correos más antiguos que este límite no serán procesados.'],
+                ['IMAP_CONNECTION_TIMEOUT', '10', 'Tiempo límite para conexiones IMAP (segundos)'],
+                ['IMAP_SEARCH_OPTIMIZATION', '1', 'Activar optimizaciones de búsqueda IMAP (1=activado, 0=desactivado)'],
+                ['PERFORMANCE_LOGGING', '0', 'Activar logs de rendimiento (1=activado, 0=desactivado)'],
+                ['EARLY_SEARCH_STOP', '1', 'Parar búsqueda al encontrar primer resultado (1=activado, 0=desactivado)']
             ];
             $stmt_settings = $pdo->prepare("INSERT IGNORE INTO settings (name, value, description) VALUES (?, ?, ?)");
             foreach ($settingsData as $setting) {
@@ -285,64 +289,107 @@ define('DB_PASSWORD', '{$db_password}');
                 }
 
                 // Insertar los asuntos asociados
-                if ($platformId) { // Asegurarse de tener un ID válido
-                    foreach ($subjects as $subject) {
-                         // Opcional: Añadir INSERT IGNORE aquí si no queremos duplicados exactos de asuntos por plataforma
-                         $stmt_subject_insert->execute([$platformId, $subject]);
-                    }
-                }
-                $current_sort_order++; // Incrementar el orden para la siguiente plataforma
-            }
-            // *** FIN: Insertar Plataformas y Asuntos Predeterminados ***
-            
-            // Insertar usuario cliente predeterminado
-            $clientePassword = password_hash('cliente123', PASSWORD_DEFAULT);
-            $pdo->exec("INSERT IGNORE INTO users (username, password, email, status) VALUES 
-                ('cliente', '{$clientePassword}', 'cliente@ejemplo.com', 1)");
-        }
-        
-        // Insertar el usuario administrador
-        $hashed_password = password_hash($admin_password, PASSWORD_DEFAULT);
-
-        // Insertar en tabla 'admin'
-        $stmt = $pdo->prepare("INSERT INTO admin (username, password) VALUES (?, ?)");
-        $stmt->execute([$admin_user, $hashed_password]);
-        $admin_id = $pdo->lastInsertId();
-
-        //También insertar en tabla 'users' 
-        $stmt_user = $pdo->prepare("INSERT INTO users (id, username, password, email, status) VALUES (?, ?, ?, ?, 1)");
-        $admin_email = $admin_user . "@admin.local";
-        $stmt_user->execute([$admin_id, $admin_user, $hashed_password, $admin_email]);
-        
-        // Usar el archivo SQL como respaldo si está habilitada la opción
-        if ($usarArchivoSQL) {
-            // Leer el archivo SQL
-            $sql_file = file_get_contents(__DIR__ . '/instalacion.sql');
-            
-            // Dividir el archivo SQL en consultas individuales
-            $queries = preg_split('/;\s*$/m', $sql_file);
-            
-            // Ejecutar cada consulta
-            foreach ($queries as $query) {
-                $query = trim($query);
-                if (!empty($query)) {
-                    // Intentar ejecutar la consulta, pero ignorar errores de duplicación
-                    try {
-                        $pdo->exec($query);
-                    } catch (PDOException $e) {
-                        // Ignorar errores de duplicación (código 1062) o tablas ya existentes (código 1050)
-                        if (!in_array($e->errorInfo[1], [1062, 1050])) {
-                            throw $e;
-                        }
-                    }
+            if ($platformId) { // Asegurarse de tener un ID válido
+                foreach ($subjects as $subject) {
+                     // Opcional: Añadir INSERT IGNORE aquí si no queremos duplicados exactos de asuntos por plataforma
+                     $stmt_subject_insert->execute([$platformId, $subject]);
                 }
             }
+            $current_sort_order++; // Incrementar el orden para la siguiente plataforma
         }
+        // *** FIN: Insertar Plataformas y Asuntos Predeterminados ***
+    }
+    
+    // *** INSERTAR USUARIOS DEL SISTEMA ***
+    
+    // 1. Insertar el usuario administrador PRIMERO
+    $hashed_password = password_hash($admin_password, PASSWORD_DEFAULT);
+    
+    // 1.1 Insertar en tabla 'admin'
+    $stmt = $pdo->prepare("INSERT INTO admin (username, password) VALUES (?, ?)");
+    $stmt->execute([$admin_user, $hashed_password]);
+    $admin_id = $pdo->lastInsertId();
+    
+    // 1.2 Insertar admin también en tabla 'users' (SIN especificar ID para evitar conflictos)
+    $stmt_user = $pdo->prepare("INSERT INTO users (username, password, email, status) VALUES (?, ?, ?, 1)");
+    $admin_email = $admin_user . "@admin.local";
+    $stmt_user->execute([$admin_user, $hashed_password, $admin_email]);
+    
+    // 2. Insertar usuario cliente predeterminado
+    $clientePassword = password_hash('cliente123', PASSWORD_DEFAULT);
+    $pdo->exec("INSERT IGNORE INTO users (username, password, email, status) VALUES 
+        ('cliente', '{$clientePassword}', 'cliente@ejemplo.com', 1)");
+    
+    // *** RESPALDO CON ARCHIVO SQL (SI ESTÁ HABILITADO) ***
+    if ($usarArchivoSQL) {
+        // Leer el archivo SQL
+        $sql_file = file_get_contents(__DIR__ . '/instalacion.sql');
+        
+        // Dividir el archivo SQL en consultas individuales
+        $queries = preg_split('/;\s*$/m', $sql_file);
+        
+        // Ejecutar cada consulta
+        foreach ($queries as $query) {
+            $query = trim($query);
+            if (!empty($query)) {
+                // Intentar ejecutar la consulta, pero ignorar errores de duplicación
+                try {
+                    $pdo->exec($query);
+                } catch (PDOException $e) {
+                    // Ignorar errores de duplicación (código 1062) o tablas ya existentes (código 1050)
+                    if (!in_array($e->errorInfo[1], [1062, 1050])) {
+                        throw $e;
+                    }
+                }
+            }
+        }
+    }
         
         // Actualizar el estado de instalación
         $stmt = $pdo->prepare("UPDATE settings SET value = '1' WHERE name = 'INSTALLED'");
         $stmt->execute();
         
+        // Crear carpeta de cache con permisos automáticos
+        $cache_base_dir = '../cache/';
+        $cache_data_dir = '../cache/data/';
+        
+        try {
+            // Crear carpeta base cache
+            if (!file_exists($cache_base_dir)) {
+                if (mkdir($cache_base_dir, 0755, true)) {
+                    chmod($cache_base_dir, 0755);
+                    echo "<!-- Cache base directory created successfully -->";
+                } else {
+                    throw new Exception("No se pudo crear la carpeta cache base");
+                }
+            }
+            
+            // Crear carpeta data con permisos de escritura
+            if (!file_exists($cache_data_dir)) {
+                if (mkdir($cache_data_dir, 0777, true)) {
+                    chmod($cache_data_dir, 0777);
+                    echo "<!-- Cache data directory created successfully -->";
+                } else {
+                    throw new Exception("No se pudo crear la carpeta cache/data");
+                }
+            }
+            
+            // Verificar que cache_helper.php existe y configurar permisos
+            $cache_helper_file = '../cache/cache_helper.php';
+            if (file_exists($cache_helper_file)) {
+                chmod($cache_helper_file, 0755);
+                echo "<!-- Cache helper permissions set successfully -->";
+            }
+            
+            // Crear archivo .htaccess para proteger la carpeta cache
+            $htaccess_content = "# Proteger carpeta de cache\nDeny from all\n<Files \"*.json\">\nDeny from all\n</Files>";
+            file_put_contents($cache_data_dir . '.htaccess', $htaccess_content);
+            
+        } catch (Exception $cache_error) {
+            // No fallar la instalación por problemas de cache, solo registrar
+            error_log("Warning durante instalación - Cache: " . $cache_error->getMessage());
+        }
+
         // Marcar la instalación como completada
         file_put_contents(__DIR__ . '/installed.txt', date('Y-m-d H:i:s'));
 

@@ -3,6 +3,7 @@ session_start();
 require_once '../instalacion/basededatos.php'; 
 require_once '../funciones.php'; 
 require_once '../security/auth.php';
+require_once '../cache/cache_helper.php';
 
 // Verificar si el usuario es admin
 check_session(true, '../index.php'); 
@@ -32,6 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt_insert->bind_param("s", $platform_name);
                     if ($stmt_insert->execute()) {
                         $_SESSION['platform_message'] = 'Plataforma "' . htmlspecialchars($platform_name) . '" añadida correctamente.';
+                        SimpleCache::clear_platforms_cache();
                     } else {
                         $_SESSION['platform_error'] = 'Error al añadir la plataforma: ' . $stmt_insert->error;
                     }
@@ -60,6 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt_update->bind_param("si", $platform_name, $platform_id);
                     if ($stmt_update->execute()) {
                         $_SESSION['platform_message'] = 'Plataforma actualizada correctamente.';
+                        SimpleCache::clear_platforms_cache();
                     } else {
                         $_SESSION['platform_error'] = 'Error al actualizar la plataforma: ' . $stmt_update->error;
                     }
@@ -81,7 +84,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt_delete->bind_param("i", $platform_id); 
                 if ($stmt_delete->execute()) {
                      // ON DELETE CASCADE se encargará de los asuntos
-                    $_SESSION['platform_message'] = 'Plataforma y sus asuntos asociados eliminados correctamente.';
+                    $_SESSION['platform_message'] = 'Plataforma y sus asuntos asociados eliminados correctamente.'
+                    ;
+                    SimpleCache::clear_platforms_cache();
                 } else {
                     $_SESSION['platform_error'] = 'Error al eliminar la plataforma: ' . $stmt_delete->error;
                 }
