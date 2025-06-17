@@ -88,6 +88,36 @@ class SimpleCache {
     }
     
     /**
+     * Obtener servidores habilitados desde cache o BD
+     */
+    public static function get_enabled_servers($conn) {
+        $cache_file = self::$cache_dir . 'enabled_servers.json';
+        
+        // Verificar si existe cache válido
+        if (file_exists($cache_file) && (time() - filemtime($cache_file)) < self::$cache_time) {
+            $cached_data = file_get_contents($cache_file);
+            return json_decode($cached_data, true);
+        }
+        
+        // Si no hay cache válido, consultar BD
+        $servers = [];
+        
+        $query = "SELECT * FROM email_servers WHERE enabled = 1 ORDER BY id ASC";
+        $result = $conn->query($query);
+        
+        if ($result) {
+            while ($row = $result->fetch_assoc()) {
+                $servers[] = $row;
+            }
+        }
+        
+        // Guardar en cache
+        file_put_contents($cache_file, json_encode($servers));
+        
+        return $servers;
+    }
+    
+    /**
      * Limpiar cache (usar cuando se actualicen configuraciones)
      */
     public static function clear_cache() {
@@ -114,6 +144,16 @@ class SimpleCache {
      */
     public static function clear_platforms_cache() {
         $cache_file = self::$cache_dir . 'platforms.json';
+        if (file_exists($cache_file)) {
+            unlink($cache_file);
+        }
+    }
+    
+    /**
+     * Limpiar cache de servidores
+     */
+    public static function clear_servers_cache() {
+        $cache_file = self::$cache_dir . 'enabled_servers.json';
         if (file_exists($cache_file)) {
             unlink($cache_file);
         }

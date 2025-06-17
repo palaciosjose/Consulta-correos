@@ -7,46 +7,21 @@ require_once 'funciones.php';
 
 // Verificar si el sistema está instalado
 if (!is_installed()) {
-    // Redirigir a la página de instalación
     header("Location: instalacion/instalador.php");
     exit();
 }
 
-// A partir de aquí, sabemos que el sistema está instalado
-// Incluir archivos necesarios de configuración
+// Incluir archivos de configuración
 if (file_exists('instalacion/basededatos.php')) {
     require_once 'instalacion/basededatos.php';
 }
 
-// Configurar sesión solo si no está activa
-if (session_status() === PHP_SESSION_NONE) {
-    // Establecer la duración de la sesión (15 minutos)
-    ini_set('session.gc_maxlifetime', 900);
-    ini_set('session.cookie_lifetime', 900);
-    session_set_cookie_params([
-        'lifetime' => 900,
-        'path' => '/',
-        'domain' => '',
-        'secure' => false,
-        'httponly' => true,
-        'samesite' => 'Lax'
-    ]);
-}
-
-// Evitar almacenamiento en caché
-header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
-header("Cache-Control: post-check=0, pre-check=0", false);
-header("Pragma: no-cache");
-
-// Verificar si el usuario ya está autenticado
+// Evitar que usuarios ya logueados vean esta página
 if (isset($_SESSION['user_id'])) {
-    // Redirigir a inicio.php si ya está autenticado
     header("Location: inicio.php");
     exit();
 }
 
-// Continuar con la lógica de login existente...
-// Obtener la configuración de login requerido
 $conn = new mysqli($db_host, $db_user, $db_password, $db_name);
 $conn->set_charset("utf8mb4");
 
@@ -54,149 +29,57 @@ if ($conn->connect_error) {
     die("Error de conexión a la base de datos: " . $conn->connect_error);
 }
 
-// Obtener la configuración de login requerido
-$stmt = $conn->prepare("SELECT value FROM settings WHERE name = 'REQUIRE_LOGIN'");
-$stmt->execute();
-$stmt->bind_result($require_login);
-$stmt->fetch();
-$stmt->close();
-
-// Si no existe la configuración, establecerla como habilitada por defecto
-if ($require_login === null) {
-    $require_login = '1';
-    $stmt = $conn->prepare("INSERT INTO settings (name, value, description) VALUES ('REQUIRE_LOGIN', '1', 'Si está activado (1), se requiere inicio de sesión para todos los usuarios. Si está desactivado (0), solo se requiere para administradores.')");
-    $stmt->execute();
-    $stmt->close();
-}
-
-// Verificar si el usuario ya está autenticado
-if (isset($_SESSION['user_id'])) {
-    // Redirigir a inicio.php si ya está autenticado
-    header("Location: inicio.php");
-    exit();
-}
-
-// Variable para mostrar mensajes de error
+// Lógica de login
 $login_error = '';
-$show_login_form = true;
-$admin_only_login = false;
-
-// Verificar si es un acceso para admin o acceso normal
-if ($require_login === '0' && !isset($_GET['action'])) {
-    // Si no se requiere login y no es un acceso específico para admin, redireccionar a inicio.php
-    header("Location: inicio.php");
-    exit();
-} else if ($require_login === '0' && isset($_GET['action']) && $_GET['action'] === 'admin_login') {
-    // Es un acceso específico para admin
-    $admin_only_login = true;
-    $show_login_form = true;
-}
-
-// Procesar el formulario de inicio de sesión
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
-    // Sanitizar entradas
     $username = $conn->real_escape_string(trim($_POST['username']));
     $password = $_POST['password'];
 
-    if ($admin_only_login) {
-        // Solo verificar credenciales de administrador
-        $stmt = $conn->prepare("SELECT id, username, password FROM admin WHERE username = ?");
-        $stmt->bind_param("s", $username);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($result->num_rows > 0) {
-            // Es un administrador
-            $user = $result->fetch_assoc();
-            if (password_verify($password, $user['password'])) {
-                // Autenticación exitosa
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['username'] = $user['username'];
-                $_SESSION['user_role'] = 'admin';
-                $_SESSION['last_activity'] = time();
-                
-                // Redirigir a inicio.php
-                header("Location: inicio.php");
-                exit();
-            } else {
-                $login_error = "Contraseña incorrecta";
-            }
-        } else {
-            $login_error = "Usuario no encontrado o no es administrador";
+    // Prioridad para administradores
+    $stmt = $conn->prepare("SELECT id, username, password FROM admin WHERE username = ?");
+    $stmt->bind_param("s", $username);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows > 0) {
+        $user = $result->fetch_assoc();
+        if (password_verify($password, $user['password'])) {
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['username'] = $user['username'];
+            $_SESSION['user_role'] = 'admin';
+            $_SESSION['last_activity'] = time();
+            header("Location: inicio.php");
+            exit();
         }
-        
-        $stmt->close();
-    } else {
-        // Verificar si es administrador o usuario regular
-        // Primero verificar si es un administrador
-        $stmt = $conn->prepare("SELECT id, username, password FROM admin WHERE username = ?");
-        $stmt->bind_param("s", $username);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($result->num_rows > 0) {
-            // Es un administrador
-            $user = $result->fetch_assoc();
-            if (password_verify($password, $user['password'])) {
-                // Autenticación exitosa
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['username'] = $user['username'];
-                $_SESSION['user_role'] = 'admin';
-                $_SESSION['last_activity'] = time();
-                
-                // Redirigir a inicio.php
-                header("Location: inicio.php");
-                exit();
-            } else {
-                $login_error = "Contraseña incorrecta";
-            }
-        } else {
-            // No es admin, verificar si es usuario regular
-            $stmt = $conn->prepare("SELECT id, username, password FROM users WHERE username = ? AND status = 1");
-            $stmt->bind_param("s", $username);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            
-            if ($result->num_rows > 0) {
-                $user = $result->fetch_assoc();
-                if (password_verify($password, $user['password'])) {
-                    // Autenticación exitosa
-                    $_SESSION['user_id'] = $user['id'];
-                    $_SESSION['username'] = $user['username'];
-                    $_SESSION['user_role'] = 'usuario';
-                    $_SESSION['last_activity'] = time();
-                    
-                    // Redirigir a inicio.php
-                    header("Location: inicio.php");
-                    exit();
-                } else {
-                    $login_error = "Contraseña incorrecta";
-                }
-            } else {
-                $login_error = "Usuario no encontrado o inactivo";
-            }
+    }
+
+    // Si no es admin, buscar en usuarios regulares
+    $stmt = $conn->prepare("SELECT id, username, password FROM users WHERE username = ? AND status = 1");
+    $stmt->bind_param("s", $username);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows > 0) {
+        $user = $result->fetch_assoc();
+        if (password_verify($password, $user['password'])) {
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['username'] = $user['username'];
+            $_SESSION['user_role'] = 'usuario';
+            $_SESSION['last_activity'] = time();
+            header("Location: inicio.php");
+            exit();
         }
-        
-        $stmt->close();
     }
     
-    $conn->close();
+    $login_error = "Usuario o contraseña incorrectos.";
+    $stmt->close();
 }
 
-// Obtener configuraciones (si existen)
-$page_title = 'Sistema de Códigos';
-$settings_query = $conn->query("SELECT * FROM settings WHERE name = 'PAGE_TITLE'");
-if ($settings_query && $settings_query->num_rows > 0) {
-    $setting = $settings_query->fetch_assoc();
-    $page_title = $setting['value'];
-}
-
+// Obtener todas las configuraciones para usar el logo
+$settings = SimpleCache::get_settings($conn);
+$page_title = $settings['PAGE_TITLE'] ?? 'Sistema de Códigos';
 $conn->close();
-
-// Mostrar el formulario solo si es necesario
-if ($show_login_form):
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -204,116 +87,216 @@ if ($show_login_form):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($page_title) ?> - Iniciar Sesión</title>
     
-    <!-- Bootstrap CSS (CDN) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    
-    <!-- Font Awesome (CDN) -->
-    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.8.1/css/all.css">
-    
-    <!-- Estilos adicionales -->
-    <link rel="stylesheet" href="styles/global_design.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <style>
+        /* --- VARIABLES DE COLOR --- */
+        :root {
+            --bg-purple-dark: #1A1235;
+            --card-purple: #2A1F4D;
+            --input-dark: rgba(0, 0, 0, 0.3);
+            --text-primary: #FFFFFF;
+            --text-secondary: #BCAEE5;
+            --accent-green: #32FFB5;
+            --glow-green: rgba(50, 255, 181, 0.15);
+            --glow-border: rgba(50, 255, 181, 0.4);
+            --error-color: #ff4d4d;
+        }
+
+        /* --- ESTILOS GENERALES Y FONDO --- */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         body {
-            background-color: #f8f9fa;
-            height: 100vh;
+            background-color: var(--bg-purple-dark);
+            color: var(--text-primary);
+            font-family: 'Poppins', sans-serif;
+            position: relative;
+            overflow-x: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
-            position: relative;
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
+            min-height: 100vh;
         }
-        
+
         body::before {
-            content: "";
-            position: absolute;
+            content: '';
+            position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.4); /* Oscurecimiento del 40% */
-            backdrop-filter: blur(8px); /* Difuminado */
-            -webkit-backdrop-filter: blur(8px); /* Para compatibilidad con Safari */
+            background-image: url('/images/fondo/fondo.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            filter: brightness(0.5) saturate(1.1) blur(2px);
+            z-index: -2;
+            animation: kenburns-effect 40s ease-in-out infinite alternate;
+        }
+
+        @keyframes kenburns-effect {
+            from { transform: scale(1) translate(0, 0); }
+            to { transform: scale(1.1) translate(2%, -2%); }
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(rgba(26, 18, 53, 0.6), rgba(26, 18, 53, 0.6));
             z-index: -1;
         }
-        
-        .container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100%;
-            z-index: 1;
+
+        /* --- TARJETA DE LOGIN --- */
+        .login-card {
+            background: var(--card-purple);
+            border: 1px solid var(--glow-border);
+            border-radius: 20px;
+            padding: 2.5rem;
+            max-width: 450px;
+            width: 90%;
+            box-shadow: inset 0 0 15px rgba(50, 255, 181, 0.1), 0 10px 30px rgba(0,0,0,0.4);
+            animation: fadeIn 1s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         
-        .login-container {
-            width: 100%;
-            max-width: 400px;
-            padding: 30px;
-            background-color: #fff;
-            border-radius: 10px;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
-        }
-        
-        .login-logo {
+        .login-header {
             text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        /* --- ESTILOS PARA EL LOGO DIRECTO (SIN CÍRCULO) --- */
+        .login-logo {
+            margin: 0 auto 1.5rem; /* Margen inferior para separar del título */
+        }
+
+        .login-logo img {
+            max-width: 150px; /* Ancho máximo del logo */
+            height: auto;
+        }
+        
+        .login-title {
+            font-weight: 600;
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .login-subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        /* --- FORMULARIO --- */
+        .form-group {
+            position: relative;
             margin-bottom: 1.5rem;
         }
         
-        .btn-login {
+        .form-input {
             width: 100%;
-            padding: 10px;
-            font-weight: bold;
+            padding: 1rem 1rem 1rem 3.5rem;
+            background-color: var(--input-dark);
+            border: 1px solid var(--text-secondary);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: all 0.3s ease;
         }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent-green);
+            box-shadow: 0 0 0 4px var(--glow-green);
+        }
+        
+        .form-icon {
+            position: absolute;
+            left: 1.2rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+        }
+        
+        .form-input:focus + .form-icon {
+            color: var(--accent-green);
+        }
+        
+        /* --- BOTÓN --- */
+        .login-btn {
+            width: 100%;
+            padding: 1rem;
+            border: none;
+            border-radius: 12px;
+            color: var(--bg-purple-dark);
+            background: var(--accent-green);
+            font-weight: 700;
+            font-size: 1.1rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 0 20px var(--glow-green);
+            transition: all 0.3s ease;
+        }
+        
+        .login-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 0 30px 5px var(--glow-green);
+        }
+        
+        /* --- ALERTA DE ERROR --- */
+        .alert-error {
+            background-color: rgba(255, 77, 77, 0.1);
+            border: 1px solid var(--error-color);
+            color: var(--error-color);
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="login-container">
+    <div class="login-card">
+        <div class="login-header">
             <div class="login-logo">
-                <h2><?= htmlspecialchars($page_title) ?></h2>
-                <?php if ($admin_only_login): ?>
-                    <p class="text-muted">Acceso exclusivo para administradores</p>
-                <?php endif; ?>
+                <img src="/images/logo/<?= htmlspecialchars($settings['LOGO'] ?? 'logo.png'); ?>" alt="Logo del Sistema">
             </div>
-            
-            <?php if (!empty($login_error)): ?>
-                <div class="alert alert-danger" role="alert">
-                    <i class="fas fa-exclamation-circle me-2"></i><?= htmlspecialchars($login_error) ?>
-                </div>
-            <?php endif; ?>
-            
-            <form method="POST" action="<?= $admin_only_login ? 'index.php?action=admin_login' : 'index.php' ?>">
-                <div class="mb-3">
-                    <label for="username" class="form-label">Usuario</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-user"></i></span>
-                        <input type="text" class="form-control" id="username" name="username" required autofocus>
-                    </div>
-                </div>
-                <div class="mb-4">
-                    <label for="password" class="form-label">Contraseña</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                        <input type="password" class="form-control" id="password" name="password" required>
-                    </div>
-                </div>
-                <button type="submit" name="login" class="btn btn-primary btn-login">
-                    <i class="fas fa-sign-in-alt me-2"></i>Iniciar Sesión
-                </button>
-                
-                <?php if ($admin_only_login): ?>
-                <div class="text-center mt-3">
-                    <a href="inicio.php" class="btn btn-link">Volver a la página principal</a>
-                </div>
-                <?php endif; ?>
-            </form>
+            <h1 class="login-title">Iniciar Sesión</h1>
+            <p class="login-subtitle">Accede a tu sistema de códigos</p>
         </div>
+
+        <?php if (!empty($login_error)): ?>
+            <div class="alert-error">
+                <span><?= htmlspecialchars($login_error) ?></span>
+            </div>
+        <?php endif; ?>
+
+        <form class="login-form" method="POST" action="index.php">
+            <div class="form-group">
+                <input type="text" class="form-input" name="username" placeholder="Usuario" required autofocus autocomplete="username">
+                <i class="fas fa-user form-icon"></i>
+            </div>
+
+            <div class="form-group">
+                <input type="password" class="form-input" name="password" placeholder="Contraseña" required autocomplete="current-password">
+                <i class="fas fa-lock form-icon"></i>
+            </div>
+
+            <button type="submit" name="login" class="login-btn">
+                <span>Ingresar</span>
+            </button>
+        </form>
     </div>
-    
-    <!-- Bootstrap JS (CDN) -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-<?php endif; ?>

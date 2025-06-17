@@ -1,7 +1,10 @@
 <?php
 header('Content-Type: text/html; charset=utf-8');
-// Inicia una sesión para almacenar datos temporales
-session_start();
+
+// Iniciar sesión solo si no está activa
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 // Configuración de caracteres para PHP
 mb_internal_encoding('UTF-8');

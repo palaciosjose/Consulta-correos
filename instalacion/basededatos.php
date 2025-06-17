@@ -1,7 +1,7 @@
 <?php
-// Este archivo será sobrescrito durante la instalación
+// Archivo generado automáticamente durante la instalación
 $db_host = 'localhost';
-$db_user = '';
-$db_password = '';
-$db_name = '';
+$db_user = 'serverbussn_Sdigi';
+$db_password = 'mGeQo5hgb6jlGyqL';
+$db_name = 'serverbussn_Sdigi';
 ?>
