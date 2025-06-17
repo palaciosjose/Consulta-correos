@@ -1,0 +1,282 @@
+/* ========================================
+   SISTEMA DE CÓDIGOS - TEMA NEÓN INSTALADOR
+   ======================================== */
+
+/* --- FUENTES Y VARIABLES DE COLOR --- */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+
+:root {
+    --neon-primary: #00f2fe;
+    --neon-secondary: #a162f7;
+    --neon-success: #32FFB5;
+    --neon-danger: #ff4d4d;
+    --neon-warning: #f59e0b;
+    --bg-dark: #0f172a;
+    --card-bg: rgba(26, 18, 53, 0.6);
+    --input-bg: rgba(0, 0, 0, 0.3);
+    --text-light: #FFFFFF;
+    --text-muted: #bcaee5;
+    --border-color: rgba(0, 242, 254, 0.25);
+    --glow-color: rgba(0, 242, 254, 0.2);
+    --glow-strong: 0 0 25px var(--glow-color);
+}
+
+/* --- ESTILOS GENERALES Y FONDO --- */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Poppins', sans-serif;
+    background-color: var(--bg-dark);
+    color: var(--text-light);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    position: relative;
+    overflow-x: hidden;
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url('../images/fondo/fondo.jpg') center/cover no-repeat;
+    filter: brightness(0.4) blur(3px);
+    z-index: -2;
+    animation: kenburns-effect 50s ease-in-out infinite alternate;
+}
+
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at 15% 50%, var(--glow-color), transparent 40%),
+                radial-gradient(circle at 85% 50%, rgba(161, 98, 247, 0.1), transparent 40%);
+    animation: bg-pulse 8s ease-in-out infinite alternate;
+    z-index: -1;
+}
+
+@keyframes kenburns-effect {
+    from { transform: scale(1) translate(0, 0); }
+    to { transform: scale(1.1) translate(-2%, 2%); }
+}
+
+@keyframes bg-pulse {
+    to { opacity: 0.5; transform: scale(1.05); }
+}
+
+/* --- CONTENEDOR PRINCIPAL --- */
+.installer-container {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border-radius: 20px;
+    padding: 2.5rem;
+    max-width: 1000px;
+    width: 100%;
+    box-shadow: var(--glow-strong);
+    animation: fadeIn 1s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- TÍTULOS Y TEXTOS --- */
+h1, h2, h3, h4 {
+    color: var(--text-light);
+    font-weight: 600;
+}
+
+h1 {
+    font-size: 2rem;
+    text-shadow: 0 0 10px var(--glow-color);
+}
+
+.text-secondary {
+    color: var(--text-muted) !important;
+}
+
+/* --- SECCIONES DEL FORMULARIO --- */
+.form-section {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+/* --- TABLAS --- */
+.table {
+    background-color: transparent;
+    border-color: var(--border-color);
+}
+
+.table-dark {
+    --bs-table-bg: rgba(0,0,0,0.1);
+    --bs-table-border-color: var(--border-color);
+    --bs-table-striped-bg: rgba(0,0,0,0.2);
+}
+
+.table thead th {
+    color: var(--neon-primary);
+    text-transform: uppercase;
+    font-size: 0.9rem;
+    border-bottom: 2px solid var(--neon-primary) !important;
+}
+
+.table tbody tr:hover {
+    background-color: rgba(0, 242, 254, 0.05);
+}
+
+/* --- ESTADOS DE REQUERIMIENTOS --- */
+.requirement-ok { color: var(--neon-success) !important; font-weight: 600; }
+.requirement-error { color: var(--neon-danger) !important; font-weight: 600; }
+
+.requirement-ok .fa-check, .requirement-error .fa-times {
+    text-shadow: 0 0 8px currentColor;
+}
+
+/* --- FORMULARIOS Y BOTONES --- */
+.form-label {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.form-control {
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-light);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    transition: all 0.3s ease;
+}
+
+.form-control:focus {
+    background-color: var(--input-bg);
+    color: var(--text-light);
+    border-color: var(--neon-primary);
+    box-shadow: 0 0 15px var(--glow-color);
+    outline: none;
+}
+
+.form-control::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.btn {
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    border: none;
+    transition: all 0.3s ease;
+    letter-spacing: 0.5px;
+}
+
+.btn-primary {
+    background: var(--neon-primary);
+    color: var(--bg-dark);
+    box-shadow: 0 0 15px var(--glow-color);
+}
+.btn-primary:hover {
+    background: var(--neon-primary);
+    color: var(--bg-dark);
+    transform: translateY(-3px);
+    box-shadow: 0 0 25px var(--neon-primary);
+}
+
+.btn-success {
+    background: var(--neon-success);
+    color: var(--bg-dark);
+    box-shadow: 0 0 15px rgba(50, 255, 181, 0.2);
+}
+.btn-success:hover {
+    background: var(--neon-success);
+    color: var(--bg-dark);
+    transform: translateY(-3px);
+    box-shadow: 0 0 25px var(--neon-success);
+}
+
+.btn-secondary {
+    background: rgba(255,255,255,0.1);
+    color: var(--text-light);
+    border: 1px solid var(--border-color);
+}
+.btn-secondary:hover {
+    background: rgba(255,255,255,0.2);
+    border-color: var(--neon-primary);
+    color: var(--neon-primary);
+}
+
+/* --- ALERTAS --- */
+.alert {
+    border-radius: 12px;
+    border-width: 1px;
+    border-style: solid;
+}
+.alert-success {
+    background-color: rgba(50, 255, 181, 0.1);
+    border-color: rgba(50, 255, 181, 0.3);
+    color: var(--neon-success);
+}
+.alert-warning {
+    background-color: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.3);
+    color: var(--neon-warning);
+}
+.alert-danger {
+    background-color: rgba(255, 77, 77, 0.1);
+    border-color: rgba(255, 77, 77, 0.3);
+    color: var(--neon-danger);
+}
+.alert-info {
+    background-color: rgba(0, 242, 254, 0.1);
+    border-color: rgba(0, 242, 254, 0.3);
+    color: var(--neon-primary);
+}
+
+/* --- OVERLAY DE PROGRESO --- */
+.installation-progress {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(8px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.progress-content {
+    text-align: center;
+    color: var(--text-light);
+}
+
+.spinner-border {
+    width: 4rem;
+    height: 4rem;
+    color: var(--neon-primary);
+    border-width: 0.3em;
+}
+
+.hidden {
+    display: none;
+}
