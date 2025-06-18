@@ -1,12 +1,130 @@
 <?php
 /**
  * Sistema de Consulta de Códigos por Email - Funciones Optimizadas
- * Versión: 2.0 - Revisada y optimizada
+ * Versión: 2.1 - Integración de licencias corregida
  */
 
 // Inicializar sesión de forma segura
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
+}
+
+// ===== INTEGRACIÓN DEL SISTEMA DE LICENCIAS CORREGIDA =====
+require_once __DIR__ . '/license_client.php';
+
+// Verificar licencia automáticamente (excepto en instalador)
+if (!defined('INSTALLER_MODE')) {
+    try {
+        $license_client = new ClientLicense();
+        
+        // Verificación simple de licencia válida
+        if (!$license_client->isLicenseValid()) {
+            showLicenseError();
+            exit();
+        }
+    } catch (Exception $e) {
+        // En caso de error con el sistema de licencias, log y continuar
+        error_log("Error verificando licencia: " . $e->getMessage());
+        // Para desarrollo, puedes comentar las siguientes líneas
+        showLicenseError();
+        exit();
+    }
+}
+
+/**
+ * Mostrar error de licencia
+ */
+function showLicenseError() {
+    $license_client = new ClientLicense();
+    $diagnostic_info = $license_client->getDiagnosticInfo();
+    
+    // Limpiar cualquier salida previa
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    header('HTTP/1.1 403 Forbidden');
+    header('Content-Type: text/html; charset=utf-8');
+    
+    echo '<!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Licencia Requerida</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <style>
+            body { 
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .license-error-container {
+                background: white;
+                border-radius: 15px;
+                padding: 2rem;
+                max-width: 600px;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                text-align: center;
+            }
+            .license-icon {
+                font-size: 4rem;
+                color: #dc3545;
+                margin-bottom: 1rem;
+            }
+            .diagnostic-info {
+                background: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                padding: 1rem;
+                margin-top: 1.5rem;
+                text-align: left;
+                font-family: monospace;
+                font-size: 0.9rem;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="license-error-container">
+            <div class="license-icon">
+                <i class="fas fa-shield-alt"></i>
+            </div>
+            <h1 class="h3 mb-3">Licencia Requerida</h1>
+            <p class="text-muted mb-4">
+                Este software requiere una licencia válida para funcionar correctamente.
+            </p>
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Estado:</strong> Licencia no válida o no encontrada
+            </div>
+            
+            <div class="diagnostic-info">
+                <h6><i class="fas fa-wrench me-2"></i>Información de Diagnóstico:</h6>
+                <ul class="list-unstyled mb-0">
+                    <li><strong>Archivo de licencia:</strong> ' . htmlspecialchars($diagnostic_info['license_file']) . '</li>
+                    <li><strong>Directorio existe:</strong> ' . ($diagnostic_info['directory_exists'] ? 'SÍ' : 'NO') . '</li>
+                    <li><strong>Archivo existe:</strong> ' . ($diagnostic_info['file_exists'] ? 'SÍ' : 'NO') . '</li>
+                    <li><strong>Archivo legible:</strong> ' . ($diagnostic_info['file_readable'] ? 'SÍ' : 'NO') . '</li>
+                    <li><strong>Dominio actual:</strong> ' . htmlspecialchars($_SERVER['HTTP_HOST']) . '</li>
+                </ul>
+            </div>
+            
+            <div class="mt-4">
+                <p class="text-muted small">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Contacte al administrador del sistema para resolver este problema.
+                </p>
+                <a href="instalacion/instalador.php" class="btn btn-primary">
+                    <i class="fas fa-cogs me-2"></i>Ir al Instalador
+                </a>
+            </div>
+        </div>
+    </body>
+    </html>';
 }
 
 // Incluir dependencias
@@ -95,85 +213,107 @@ class EmailSearchEngine {
     }
     
     /**
- * Verificación de email autorizado con restricciones por usuario
- */
-private function isAuthorizedEmail($email) {
-    $auth_enabled = ($this->settings['EMAIL_AUTH_ENABLED'] ?? '0') === '1';
-    $user_restrictions_enabled = ($this->settings['USER_EMAIL_RESTRICTIONS_ENABLED'] ?? '0') === '1';
-    
-    // Si no hay filtro de autorizacion, permitir todos
-    if (!$auth_enabled) {
-        return true;
-    }
-    
-    // Verificar si el email está en la lista de autorizados
-    $stmt = $this->conn->prepare("SELECT id FROM authorized_emails WHERE email = ? LIMIT 1");
-    if (!$stmt) {
-        error_log("Error preparando consulta de autorización: " . $this->conn->error);
-        return false;
-    }
-    
-    $stmt->bind_param("s", $email);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    if ($result->num_rows == 0) {
+     * Verificación de email autorizado con restricciones por usuario
+     */
+    private function isAuthorizedEmail($email) {
+        $auth_enabled = ($this->settings['EMAIL_AUTH_ENABLED'] ?? '0') === '1';
+        $user_restrictions_enabled = ($this->settings['USER_EMAIL_RESTRICTIONS_ENABLED'] ?? '0') === '1';
+        
+        // Si no hay filtro de autorizacion, permitir todos
+        if (!$auth_enabled) {
+            return true;
+        }
+        
+        // Verificar si el email está en la lista de autorizados
+        $stmt = $this->conn->prepare("SELECT id FROM authorized_emails WHERE email = ? LIMIT 1");
+        if (!$stmt) {
+            error_log("Error preparando consulta de autorización: " . $this->conn->error);
+            return false;
+        }
+        
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result->num_rows == 0) {
+            $stmt->close();
+            return false; // Email no está en la lista de autorizados
+        }
+        
+        $email_data = $result->fetch_assoc();
+        $authorized_email_id = $email_data['id'];
         $stmt->close();
-        return false; // Email no está en la lista de autorizados
+        
+        // Si las restricciones por usuario están deshabilitadas, permitir
+        if (!$user_restrictions_enabled) {
+            return true;
+        }
+        
+        // Verificar si el usuario actual tiene acceso a este email específico
+        $user_id = $_SESSION['user_id'] ?? null;
+        
+        // Si no hay usuario logueado, denegar
+        if (!$user_id) {
+            return false;
+        }
+        
+        // Si es admin, permitir acceso a todos los correos
+        if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
+            return true;
+        }
+        
+        // Verificar si el usuario tiene asignado este email específico
+        $stmt_user = $this->conn->prepare("
+            SELECT 1 FROM user_authorized_emails 
+            WHERE user_id = ? AND authorized_email_id = ? 
+            LIMIT 1
+        ");
+        
+        if (!$stmt_user) {
+            error_log("Error preparando consulta de restricción por usuario: " . $this->conn->error);
+            return false;
+        }
+        
+        $stmt_user->bind_param("ii", $user_id, $authorized_email_id);
+        $stmt_user->execute();
+        $result_user = $stmt_user->get_result();
+        $has_access = $result_user->num_rows > 0;
+        $stmt_user->close();
+        
+        return $has_access;
     }
-    
-    $email_data = $result->fetch_assoc();
-    $authorized_email_id = $email_data['id'];
-    $stmt->close();
-    
-    // Si las restricciones por usuario están deshabilitadas, permitir
-    if (!$user_restrictions_enabled) {
-        return true;
-    }
-    
-    // Verificar si el usuario actual tiene acceso a este email específico
-    $user_id = $_SESSION['user_id'] ?? null;
-    
-    // Si no hay usuario logueado, denegar
-    if (!$user_id) {
-        return false;
-    }
-    
-    // Si es admin, permitir acceso a todos los correos
-    if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
-        return true;
-    }
-    
-    // Verificar si el usuario tiene asignado este email específico
-    $stmt_user = $this->conn->prepare("
-        SELECT 1 FROM user_authorized_emails 
-        WHERE user_id = ? AND authorized_email_id = ? 
-        LIMIT 1
-    ");
-    
-    if (!$stmt_user) {
-        error_log("Error preparando consulta de restricción por usuario: " . $this->conn->error);
-        return false;
-    }
-    
-    $stmt_user->bind_param("ii", $user_id, $authorized_email_id);
-    $stmt_user->execute();
-    $result_user = $stmt_user->get_result();
-    $has_access = $result_user->num_rows > 0;
-    $stmt_user->close();
-    
-    return $has_access;
-}
 
-/**
- * Nueva función para obtener emails asignados a un usuario específico
- */
-public function getUserAuthorizedEmails($user_id) {
-    $user_restrictions_enabled = ($this->settings['USER_EMAIL_RESTRICTIONS_ENABLED'] ?? '0') === '1';
-    
-    // Si no hay restricciones por usuario, devolver todos los emails autorizados
-    if (!$user_restrictions_enabled) {
-        $stmt = $this->conn->prepare("SELECT email FROM authorized_emails ORDER BY email ASC");
+    /**
+     * Nueva función para obtener emails asignados a un usuario específico
+     */
+    public function getUserAuthorizedEmails($user_id) {
+        $user_restrictions_enabled = ($this->settings['USER_EMAIL_RESTRICTIONS_ENABLED'] ?? '0') === '1';
+        
+        // Si no hay restricciones por usuario, devolver todos los emails autorizados
+        if (!$user_restrictions_enabled) {
+            $stmt = $this->conn->prepare("SELECT email FROM authorized_emails ORDER BY email ASC");
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            $emails = [];
+            while ($row = $result->fetch_assoc()) {
+                $emails[] = $row['email'];
+            }
+            $stmt->close();
+            return $emails;
+        }
+        
+        // Si hay restricciones, devolver solo los emails asignados al usuario
+        $query = "
+            SELECT ae.email 
+            FROM user_authorized_emails uae 
+            JOIN authorized_emails ae ON uae.authorized_email_id = ae.id 
+            WHERE uae.user_id = ? 
+            ORDER BY ae.email ASC
+        ";
+        
+        $stmt = $this->conn->prepare($query);
+        $stmt->bind_param("i", $user_id);
         $stmt->execute();
         $result = $stmt->get_result();
         
@@ -182,32 +322,10 @@ public function getUserAuthorizedEmails($user_id) {
             $emails[] = $row['email'];
         }
         $stmt->close();
+        
         return $emails;
     }
-    
-    // Si hay restricciones, devolver solo los emails asignados al usuario
-    $query = "
-        SELECT ae.email 
-        FROM user_authorized_emails uae 
-        JOIN authorized_emails ae ON uae.authorized_email_id = ae.id 
-        WHERE uae.user_id = ? 
-        ORDER BY ae.email ASC
-    ";
-    
-    $stmt = $this->conn->prepare($query);
-    $stmt->bind_param("i", $user_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    $emails = [];
-    while ($row = $result->fetch_assoc()) {
-        $emails[] = $row['email'];
-    }
-    $stmt->close();
-    
-    return $emails;
-}
-    
+        
     /**
      * Obtener asuntos para una plataforma
      */

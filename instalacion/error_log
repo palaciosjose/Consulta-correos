@@ -1,18 +1,72 @@
-[17-Jun-2025 09:01:55 UTC] PHP Warning:  Undefined variable $user in /home/serverbussn/streamdigi.warsup.shop/instalacion/instalador.php on line 164
-[17-Jun-2025 09:01:55 UTC] PHP Warning:  Undefined variable $password in /home/serverbussn/streamdigi.warsup.shop/instalacion/instalador.php on line 164
-[17-Jun-2025 09:01:55 UTC] Error en instalación: SQLSTATE[28000] [1045] Access denied for user 'serverbussn'@'localhost' (using password: NO)
-[17-Jun-2025 09:02:56 UTC] PHP Warning:  Undefined variable $user in /home/serverbussn/streamdigi.warsup.shop/instalacion/instalador.php on line 164
-[17-Jun-2025 09:02:56 UTC] PHP Warning:  Undefined variable $password in /home/serverbussn/streamdigi.warsup.shop/instalacion/instalador.php on line 164
-[17-Jun-2025 09:02:56 UTC] Error en instalación: SQLSTATE[28000] [1045] Access denied for user 'serverbussn'@'localhost' (using password: NO)
-[17-Jun-2025 09:05:31 UTC] PHP Warning:  Undefined variable $user in /home/serverbussn/streamdigi.warsup.shop/instalacion/instalador.php on line 164
-[17-Jun-2025 09:05:31 UTC] PHP Warning:  Undefined variable $password in /home/serverbussn/streamdigi.warsup.shop/instalacion/instalador.php on line 164
-[17-Jun-2025 09:05:31 UTC] Error en instalación: SQLSTATE[28000] [1045] Access denied for user 'serverbussn'@'localhost' (using password: NO)
-[17-Jun-2025 09:09:14 UTC] PHP Warning:  Undefined variable $user in /home/serverbussn/streamdigi.warsup.shop/instalacion/instalador.php on line 164
-[17-Jun-2025 09:09:14 UTC] PHP Warning:  Undefined variable $password in /home/serverbussn/streamdigi.warsup.shop/instalacion/instalador.php on line 164
-[17-Jun-2025 09:09:14 UTC] Error en instalación: SQLSTATE[28000] [1045] Access denied for user 'serverbussn'@'localhost' (using password: NO)
-[17-Jun-2025 09:09:29 UTC] PHP Warning:  Undefined variable $user in /home/serverbussn/streamdigi.warsup.shop/instalacion/instalador.php on line 164
-[17-Jun-2025 09:09:29 UTC] PHP Warning:  Undefined variable $password in /home/serverbussn/streamdigi.warsup.shop/instalacion/instalador.php on line 164
-[17-Jun-2025 09:09:29 UTC] Error en instalación: SQLSTATE[28000] [1045] Access denied for user 'serverbussn'@'localhost' (using password: NO)
-[17-Jun-2025 09:17:49 UTC] PHP Warning:  Undefined variable $user in /home/serverbussn/streamdigi.warsup.shop/instalacion/instalador.php on line 164
-[17-Jun-2025 09:17:49 UTC] PHP Warning:  Undefined variable $password in /home/serverbussn/streamdigi.warsup.shop/instalacion/instalador.php on line 164
-[17-Jun-2025 09:17:49 UTC] Error en instalación: SQLSTATE[28000] [1045] Access denied for user 'serverbussn'@'localhost' (using password: NO)
+[18-Jun-2025 02:49:21 UTC] === DIAGNÓSTICO SISTEMA LICENCIAS ===
+[18-Jun-2025 02:49:21 UTC] PROJECT_ROOT: /home/serverbussn/streamdigi.warsup.shop
+[18-Jun-2025 02:49:21 UTC] LICENSE_DIR: /home/serverbussn/streamdigi.warsup.shop/license
+[18-Jun-2025 02:49:21 UTC] LICENSE_FILE: /home/serverbussn/streamdigi.warsup.shop/license/license.dat
+[18-Jun-2025 02:49:21 UTC] License dir exists: SÍ
+[18-Jun-2025 02:49:21 UTC] License dir writable: SÍ
+[18-Jun-2025 02:49:21 UTC] =====================================
+[18-Jun-2025 02:52:02 UTC] === DIAGNÓSTICO SISTEMA LICENCIAS ===
+[18-Jun-2025 02:52:02 UTC] PROJECT_ROOT: /home/serverbussn/streamdigi.warsup.shop
+[18-Jun-2025 02:52:02 UTC] LICENSE_DIR: /home/serverbussn/streamdigi.warsup.shop/license
+[18-Jun-2025 02:52:02 UTC] LICENSE_FILE: /home/serverbussn/streamdigi.warsup.shop/license/license.dat
+[18-Jun-2025 02:52:02 UTC] License dir exists: SÍ
+[18-Jun-2025 02:52:02 UTC] License dir writable: SÍ
+[18-Jun-2025 02:52:02 UTC] =====================================
+[18-Jun-2025 02:52:06 UTC] === DIAGNÓSTICO SISTEMA LICENCIAS ===
+[18-Jun-2025 02:52:06 UTC] PROJECT_ROOT: /home/serverbussn/streamdigi.warsup.shop
+[18-Jun-2025 02:52:06 UTC] LICENSE_DIR: /home/serverbussn/streamdigi.warsup.shop/license
+[18-Jun-2025 02:52:06 UTC] LICENSE_FILE: /home/serverbussn/streamdigi.warsup.shop/license/license.dat
+[18-Jun-2025 02:52:06 UTC] License dir exists: SÍ
+[18-Jun-2025 02:52:06 UTC] License dir writable: SÍ
+[18-Jun-2025 02:52:06 UTC] =====================================
+[18-Jun-2025 02:53:01 UTC] === DIAGNÓSTICO SISTEMA LICENCIAS ===
+[18-Jun-2025 02:53:01 UTC] PROJECT_ROOT: /home/serverbussn/streamdigi.warsup.shop
+[18-Jun-2025 02:53:01 UTC] LICENSE_DIR: /home/serverbussn/streamdigi.warsup.shop/license
+[18-Jun-2025 02:53:01 UTC] LICENSE_FILE: /home/serverbussn/streamdigi.warsup.shop/license/license.dat
+[18-Jun-2025 02:53:01 UTC] License dir exists: SÍ
+[18-Jun-2025 02:53:01 UTC] License dir writable: SÍ
+[18-Jun-2025 02:53:01 UTC] =====================================
+[18-Jun-2025 02:53:01 UTC] Licencia guardada exitosamente en: /home/serverbussn/streamdigi.warsup.shop/license/license.dat
+[18-Jun-2025 02:53:03 UTC] === DIAGNÓSTICO SISTEMA LICENCIAS ===
+[18-Jun-2025 02:53:03 UTC] PROJECT_ROOT: /home/serverbussn/streamdigi.warsup.shop
+[18-Jun-2025 02:53:03 UTC] LICENSE_DIR: /home/serverbussn/streamdigi.warsup.shop/license
+[18-Jun-2025 02:53:03 UTC] LICENSE_FILE: /home/serverbussn/streamdigi.warsup.shop/license/license.dat
+[18-Jun-2025 02:53:03 UTC] License dir exists: SÍ
+[18-Jun-2025 02:53:03 UTC] License dir writable: SÍ
+[18-Jun-2025 02:53:03 UTC] =====================================
+[18-Jun-2025 02:53:05 UTC] === DIAGNÓSTICO SISTEMA LICENCIAS ===
+[18-Jun-2025 02:53:05 UTC] PROJECT_ROOT: /home/serverbussn/streamdigi.warsup.shop
+[18-Jun-2025 02:53:05 UTC] LICENSE_DIR: /home/serverbussn/streamdigi.warsup.shop/license
+[18-Jun-2025 02:53:05 UTC] LICENSE_FILE: /home/serverbussn/streamdigi.warsup.shop/license/license.dat
+[18-Jun-2025 02:53:05 UTC] License dir exists: SÍ
+[18-Jun-2025 02:53:05 UTC] License dir writable: SÍ
+[18-Jun-2025 02:53:05 UTC] =====================================
+[18-Jun-2025 02:53:06 UTC] === DIAGNÓSTICO SISTEMA LICENCIAS ===
+[18-Jun-2025 02:53:06 UTC] PROJECT_ROOT: /home/serverbussn/streamdigi.warsup.shop
+[18-Jun-2025 02:53:06 UTC] LICENSE_DIR: /home/serverbussn/streamdigi.warsup.shop/license
+[18-Jun-2025 02:53:06 UTC] LICENSE_FILE: /home/serverbussn/streamdigi.warsup.shop/license/license.dat
+[18-Jun-2025 02:53:06 UTC] License dir exists: SÍ
+[18-Jun-2025 02:53:06 UTC] License dir writable: SÍ
+[18-Jun-2025 02:53:06 UTC] =====================================
+[18-Jun-2025 02:53:06 UTC] === DIAGNÓSTICO SISTEMA LICENCIAS ===
+[18-Jun-2025 02:53:06 UTC] PROJECT_ROOT: /home/serverbussn/streamdigi.warsup.shop
+[18-Jun-2025 02:53:06 UTC] LICENSE_DIR: /home/serverbussn/streamdigi.warsup.shop/license
+[18-Jun-2025 02:53:06 UTC] LICENSE_FILE: /home/serverbussn/streamdigi.warsup.shop/license/license.dat
+[18-Jun-2025 02:53:06 UTC] License dir exists: SÍ
+[18-Jun-2025 02:53:06 UTC] License dir writable: SÍ
+[18-Jun-2025 02:53:06 UTC] =====================================
+[18-Jun-2025 02:53:08 UTC] === DIAGNÓSTICO SISTEMA LICENCIAS ===
+[18-Jun-2025 02:53:08 UTC] PROJECT_ROOT: /home/serverbussn/streamdigi.warsup.shop
+[18-Jun-2025 02:53:08 UTC] LICENSE_DIR: /home/serverbussn/streamdigi.warsup.shop/license
+[18-Jun-2025 02:53:08 UTC] LICENSE_FILE: /home/serverbussn/streamdigi.warsup.shop/license/license.dat
+[18-Jun-2025 02:53:08 UTC] License dir exists: SÍ
+[18-Jun-2025 02:53:08 UTC] License dir writable: SÍ
+[18-Jun-2025 02:53:08 UTC] =====================================
+[18-Jun-2025 02:53:29 UTC] === DIAGNÓSTICO SISTEMA LICENCIAS ===
+[18-Jun-2025 02:53:29 UTC] PROJECT_ROOT: /home/serverbussn/streamdigi.warsup.shop
+[18-Jun-2025 02:53:29 UTC] LICENSE_DIR: /home/serverbussn/streamdigi.warsup.shop/license
+[18-Jun-2025 02:53:29 UTC] LICENSE_FILE: /home/serverbussn/streamdigi.warsup.shop/license/license.dat
+[18-Jun-2025 02:53:29 UTC] License dir exists: SÍ
+[18-Jun-2025 02:53:29 UTC] License dir writable: SÍ
+[18-Jun-2025 02:53:29 UTC] =====================================
+[18-Jun-2025 02:53:29 UTC] Archivo de licencia encontrado correctamente en: /home/serverbussn/streamdigi.warsup.shop/license/license.dat
